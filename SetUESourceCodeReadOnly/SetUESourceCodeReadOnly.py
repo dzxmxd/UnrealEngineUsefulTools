@@ -1,12 +1,18 @@
 import os
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
+import threading
 
-def set_files_readonly(directory_path, selected_extensions):
-    # 获取指定路径下的所有文件
+EXCLUDED_DIRS = {
+    'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries', 'Build', 'ThirdParty', 'Content'
+}
+
+def set_files_readonly(directory_path, selected_extensions, text_output):
     modified_files = []
 
     for root, dirs, files in os.walk(directory_path):
+        # 排除不需要设置为只读的目录
+        dirs[:] = [d for d in dirs if d not in EXCLUDED_DIRS]
         for file_name in files:
             file_path = os.path.join(root, file_name)
             file_extension = os.path.splitext(file_path)[1].lower()
@@ -21,7 +27,12 @@ def set_files_readonly(directory_path, selected_extensions):
                 except Exception as e:
                     print(f"Error setting {file_path} to read-only: {e}")
 
-    return modified_files
+    # 更新UI
+    text_output.config(state=tk.NORMAL)
+    text_output.delete(1.0, tk.END)
+    for file_path in modified_files:
+        text_output.insert(tk.END, f"Set {file_path} to read-only.\n")
+    text_output.config(state=tk.DISABLED)
 
 def browse_directory():
     directory_path = filedialog.askdirectory()
@@ -33,16 +44,12 @@ def start_task():
     selected_extensions = [ext for ext, var in checkboxes.items() if var.get() == 1]
 
     if not directory_path or not selected_extensions:
+        messagebox.showwarning("Warning", "Please select a directory and at least one extension.")
         return
 
-    modified_files = set_files_readonly(directory_path, selected_extensions)
-
-    # 将已修改成功的文件路径显示在滚动框中
-    text_output.config(state=tk.NORMAL)
-    text_output.delete(1.0, tk.END)
-    for file_path in modified_files:
-        text_output.insert(tk.END, f"Set {file_path} to read-only.\n")
-    text_output.config(state=tk.DISABLED)
+    # 使用线程处理长时间任务
+    task_thread = threading.Thread(target=set_files_readonly, args=(directory_path, selected_extensions, text_output))
+    task_thread.start()
 
 # 创建主窗口
 root = tk.Tk()

@@ -1,0 +1,1 @@
+pyinstaller ./SetUESourceCodeReadOnly.py -Fw -i="./UESourceCodeReadOnly.ico"

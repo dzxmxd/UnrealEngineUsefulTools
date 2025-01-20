@@ -3,6 +3,20 @@ import pandas as pd
 import sys
 import os
 
+# 兼容下 MemReport
+def ensure_timestamp_and_frame(line):
+    # 正则表达式匹配 [时间戳][帧号] 开头
+    timestamp_frame_regex = re.compile(r"^\[\d{4}\.\d{2}\.\d{2}-\d{2}\.\d{2}\.\d{2}:\d{3}\]\[\d+\]")
+
+    # 检查是否以 [时间戳][帧号] 开头
+    if not timestamp_frame_regex.match(line):
+        # 如果不是，填充默认的时间戳和帧号
+        default_timestamp = "[2025.01.01-00.00.00:000]"
+        default_frame = "[0]"
+        line = f"{default_timestamp}{default_frame}{line}"
+
+    return line
+
 def parse_log_to_excel(file_path):
     # Read log data from the file
     with open(file_path, 'r', encoding='utf-8') as file:
@@ -18,6 +32,7 @@ def parse_log_to_excel(file_path):
     # Extract the data
     headers = []
     for line in lines:
+        line = ensure_timestamp_and_frame(line)
         match = regex.match(line)
         if match:
             timestamp, identifier, values = match.groups()

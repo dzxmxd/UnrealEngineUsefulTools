@@ -1,13 +1,22 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 import threading
 import stat
 import ctypes
 
-EXCLUDED_DIRS = {
-    'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries', 'Build', 'ThirdParty', 'Content'
+# 默认设置
+DEFAULT_EXCLUDED_DIRS = {
+    'Intermediate', 'Saved', 'DerivedDataCache', 'Binaries', 'Build', 'ThirdParty', 'Content', 'obj'
 }
+
+DEFAULT_EXTENSIONS = {
+    '.h', '.hpp', '.c', '.cpp'
+}
+
+# 当前使用的设置
+EXCLUDED_DIRS = DEFAULT_EXCLUDED_DIRS.copy()
+EXTENSIONS = DEFAULT_EXTENSIONS.copy()
 
 
 def set_files_readonly(directory_path, selected_extensions, text_output, start_button):
@@ -77,16 +86,95 @@ def browse_directory():
     entry_path.insert(0, directory_path)
 
 
+# 通用列表管理函数
+def add_to_list(list_name, listbox, items_set, title, prompt):
+    """通用的添加项目到列表的函数"""
+    new_item = simpledialog.askstring(title, prompt)
+    if new_item and new_item.strip():
+        new_item = new_item.strip()
+        if new_item.startswith('.') or list_name == "排除目录":
+            if new_item not in items_set:
+                items_set.add(new_item)
+                update_list(listbox, items_set)
+                messagebox.showinfo("成功", f"已添加 '{new_item}' 到{list_name}")
+            else:
+                messagebox.showinfo("提示", f"'{new_item}' 已在{list_name}列表中")
+        else:
+            # 文件扩展名自动添加点前缀
+            if list_name == "文件类型" and not new_item.startswith('.'):
+                new_item = '.' + new_item
+            if new_item not in items_set:
+                items_set.add(new_item)
+                update_list(listbox, items_set)
+                messagebox.showinfo("成功", f"已添加 '{new_item}' 到{list_name}")
+            else:
+                messagebox.showinfo("提示", f"'{new_item}' 已在{list_name}列表中")
+
+
+def remove_from_list(list_name, listbox, items_set):
+    """通用的从列表中移除项目的函数"""
+    selected_index = listbox.curselection()
+    if not selected_index:
+        messagebox.showwarning("警告", f"请先选择要删除的{list_name}项")
+        return
+
+    item_to_remove = listbox.get(selected_index)
+    items_set.remove(item_to_remove)
+    update_list(listbox, items_set)
+    messagebox.showinfo("成功", f"已从{list_name}中移除 '{item_to_remove}'")
+
+
+def reset_list(list_name, listbox, items_set, default_set):
+    """通用的重置列表到默认值的函数"""
+    items_set.clear()
+    items_set.update(default_set)
+    update_list(listbox, items_set)
+    messagebox.showinfo("成功", f"已重置{list_name}列表为默认值")
+
+
+def update_list(listbox, items_set):
+    """通用的更新列表显示的函数"""
+    listbox.delete(0, tk.END)
+    for item in sorted(items_set):
+        listbox.insert(tk.END, item)
+
+
+# 排除目录特定函数
+def add_excluded_dir():
+    add_to_list("排除目录", excluded_dirs_listbox, EXCLUDED_DIRS, "添加排除目录", "请输入要排除的目录名称:")
+
+
+def remove_excluded_dir():
+    remove_from_list("排除目录", excluded_dirs_listbox, EXCLUDED_DIRS)
+
+
+def reset_excluded_dirs():
+    reset_list("排除目录", excluded_dirs_listbox, EXCLUDED_DIRS, DEFAULT_EXCLUDED_DIRS)
+
+
+# 文件类型特定函数
+def add_extension():
+    add_to_list("文件类型", extensions_listbox, EXTENSIONS, "添加文件类型", "请输入要设置为只读的文件扩展名(如 .h):")
+
+
+def remove_extension():
+    remove_from_list("文件类型", extensions_listbox, EXTENSIONS)
+
+
+def reset_extensions():
+    reset_list("文件类型", extensions_listbox, EXTENSIONS, DEFAULT_EXTENSIONS)
+
+
 def start_task():
     directory_path = entry_path.get()
-    selected_extensions = [ext for ext, var in checkboxes.items() if var.get() == 1]
 
-    if not directory_path or not selected_extensions:
+    if not directory_path or not EXTENSIONS:
         messagebox.showwarning("警告", "请选择一个目录和至少一个文件扩展名。")
         return
 
     # 使用线程处理长时间任务
-    task_thread = threading.Thread(target=set_files_readonly, args=(directory_path, selected_extensions, text_output, start_button))
+    task_thread = threading.Thread(target=set_files_readonly,
+                                   args=(directory_path, EXTENSIONS, text_output, start_button))
     task_thread.daemon = True  # 设为守护线程，主程序退出时自动结束
     task_thread.start()
 
@@ -94,7 +182,7 @@ def start_task():
 # 创建主窗口
 root = tk.Tk()
 root.title("UE引擎源码只读工具 - @FiveMileFog")
-root.geometry("530x450")  # 设置窗口大小
+root.geometry("460x550")  # 适当调整窗口大小
 
 # 创建选择路径的部件
 tk.Label(root, text="选择目录:").grid(row=0, column=0, padx=10, pady=10)
@@ -102,31 +190,79 @@ entry_path = tk.Entry(root, width=40)
 entry_path.grid(row=0, column=1, padx=10, pady=10)
 tk.Button(root, text="浏览", command=browse_directory).grid(row=0, column=2, padx=10, pady=10)
 
-# 创建勾选框部件
-tk.Label(root, text="选择文件类型:").grid(row=1, column=0, padx=10, pady=10)
-checkboxes = {}
-default_extensions = [".h", ".hpp", ".c", ".cpp", ".cs", ".uplugin"]
-for i, extension in enumerate([".h", ".hpp", ".c", ".cpp", ".cs", ".uplugin", ".ush", ".usf", ".ini"]):
-    var = tk.IntVar(value=1 if extension in default_extensions else 0)
-    checkboxes[extension] = var
-    tk.Checkbutton(root, text=extension, variable=var, onvalue=1, offvalue=0).grid(row=i // 3 + 2, column=i % 3, padx=10, pady=5)
+# 添加排除目录列表部分
+tk.Label(root, text="排除目录列表:").grid(row=1, column=0, pady=0, columnspan=3)
+
+# 创建排除目录列表框
+excluded_dirs_frame = tk.Frame(root)
+excluded_dirs_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
+excluded_dirs_listbox = tk.Listbox(excluded_dirs_frame, height=4, width=40)
+excluded_dirs_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+# 添加排除目录列表滚动条
+excluded_dirs_scrollbar = tk.Scrollbar(excluded_dirs_frame, command=excluded_dirs_listbox.yview)
+excluded_dirs_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+excluded_dirs_listbox.config(yscrollcommand=excluded_dirs_scrollbar.set)
+
+# 排除目录操作按钮
+excluded_dirs_buttons_frame = tk.Frame(root)
+excluded_dirs_buttons_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=5)
+
+add_button = tk.Button(excluded_dirs_buttons_frame, text="添加目录", command=add_excluded_dir)
+add_button.pack(side=tk.LEFT, padx=5)
+
+remove_button = tk.Button(excluded_dirs_buttons_frame, text="删除选中", command=remove_excluded_dir)
+remove_button.pack(side=tk.LEFT, padx=5)
+
+reset_button = tk.Button(excluded_dirs_buttons_frame, text="重置为默认", command=reset_excluded_dirs)
+reset_button.pack(side=tk.LEFT, padx=5)
+
+# 添加文件类型列表部分
+tk.Label(root, text="文件类型列表:").grid(row=4, column=0, pady=0, columnspan=3)
+
+# 创建文件类型列表框
+extensions_frame = tk.Frame(root)
+extensions_frame.grid(row=5, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+
+extensions_listbox = tk.Listbox(extensions_frame, height=4, width=40)
+extensions_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+# 添加文件类型列表滚动条
+extensions_scrollbar = tk.Scrollbar(extensions_frame, command=extensions_listbox.yview)
+extensions_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+extensions_listbox.config(yscrollcommand=extensions_scrollbar.set)
+
+# 文件类型操作按钮
+extensions_buttons_frame = tk.Frame(root)
+extensions_buttons_frame.grid(row=6, column=0, columnspan=3, padx=10, pady=5)
+
+add_ext_button = tk.Button(extensions_buttons_frame, text="添加类型", command=add_extension)
+add_ext_button.pack(side=tk.LEFT, padx=5)
+
+remove_ext_button = tk.Button(extensions_buttons_frame, text="删除选中", command=remove_extension)
+remove_ext_button.pack(side=tk.LEFT, padx=5)
+
+reset_ext_button = tk.Button(extensions_buttons_frame, text="重置为默认", command=reset_extensions)
+reset_ext_button.pack(side=tk.LEFT, padx=5)
 
 # 创建开始任务按钮
 start_button = tk.Button(root, text="开始处理", command=start_task)
-start_button.grid(row=(len(checkboxes) - 1) // 3 + 3, column=0, columnspan=3, pady=10)
+start_button.grid(row=7, column=0, columnspan=3, pady=10)
 
 # 创建滚动框
-tk.Label(root, text="处理日志:").grid(row=(len(checkboxes) - 1) // 3 + 4, column=0, pady=10, columnspan=3)
+# tk.Label(root, text="处理日志:").grid(row=8, column=0, pady=0, columnspan=3)
 text_output = tk.Text(root, height=10, width=50, state=tk.DISABLED)
-text_output.grid(row=(len(checkboxes) - 1) // 3 + 5, column=0, columnspan=3, pady=10, padx=10, sticky="ew")
+text_output.grid(row=9, column=0, columnspan=3, pady=10, padx=10, sticky="ew")
 
 # 添加滚动条
 scrollbar = tk.Scrollbar(root, command=text_output.yview)
-scrollbar.grid(row=(len(checkboxes) - 1) // 3 + 5, column=3, pady=10, sticky="ns")
+scrollbar.grid(row=9, column=3, pady=10, sticky="ns")
 text_output.config(yscrollcommand=scrollbar.set)
 
-# 设置"Start Task"按钮居中
-root.grid_rowconfigure((len(checkboxes) - 1) // 3 + 3, weight=1)
+# 初始化列表显示
+update_list(excluded_dirs_listbox, EXCLUDED_DIRS)
+update_list(extensions_listbox, EXTENSIONS)
 
 # 运行主循环
 root.mainloop()

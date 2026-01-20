@@ -1,0 +1,1 @@
+pyinstaller --noconsole --onefile --add-binary "ffmpeg.exe;." .\UnrealElectraH265VideoFormatter.py

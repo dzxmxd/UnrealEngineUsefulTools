@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox, scrolledtext
 import os
 import sys
 import threading
-import subprocess  # 需要引入 subprocess 以使用 CREATE_NO_WINDOW
+import subprocess
 import ffmpeg  # pip install ffmpeg-python
 
 
@@ -66,38 +66,29 @@ class VideoCompressorApp:
         self.log_text.config(state='disabled')
 
     def process_video_ffmpeg_python(self, input_path, output_path):
-        """
-        核心处理逻辑 (修复版：使用 compile + subprocess 手动执行以完美隐藏黑框)
-        """
         try:
-            # 1. 定义流 (与之前相同)
             stream = ffmpeg.input(input_path)
             stream = ffmpeg.filter(stream, 'scale', w=1920, h=1088, force_original_aspect_ratio='decrease')
             stream = ffmpeg.filter(stream, 'pad', 'ceil(iw/2)*2', 'ceil(ih/2)*2')
 
             output_kwargs = {
                 'vcodec': 'libx265',
-                'pix_fmt': 'yuv420p10le',
+                'pix_fmt': 'yuv420p',
                 'x265-params': 'repeat-headers=1:aud=0:info=0:sei=0',
                 'tag:v': 'hvc1',
                 'movflags': '+faststart'
             }
             stream = ffmpeg.output(stream, output_path, **output_kwargs)
 
-            # 2. 【关键修改】不直接 run，而是 compile 出命令参数列表
-            # cmd 参数指定我们内置的 ffmpeg 路径
             cmd_args = ffmpeg.compile(stream, cmd=self.ffmpeg_binary, overwrite_output=True)
 
-            # 3. 配置隐藏窗口 (Windows 特定)
             startupinfo = None
             if os.name == 'nt':
                 startupinfo = subprocess.STARTUPINFO()
-                # 这是一个位掩码，告诉 Windows "我要设置窗口显示状态"
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                 # SW_HIDE = 0，强制隐藏窗口
                 startupinfo.wShowWindow = 0
 
-            # 4. 手动调用 subprocess
             process = subprocess.Popen(
                 cmd_args,
                 stdout=subprocess.PIPE,
